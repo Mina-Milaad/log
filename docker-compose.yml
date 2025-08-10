@@ -1,0 +1,26 @@
+version: "3.8"
+
+services:
+  app:
+    image: mybyelias/log:latest
+    container_name: log-app
+    ports:
+      - "8070:5000"
+    depends_on:
+      - mongo
+    environment:
+      - NODE_ENV=production
+    restart: always
+
+  mongo:
+    image: mongo:latest
+    container_name: log-mongodb
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo_data_log:/data/db
+    command: mongod --bind_ip_all
+    restart: always
+
+volumes:
+  mongo_data_log:
