@@ -28,3 +28,13 @@ jobs:
           context: .
           push: true
           tags: mybyelias/log:latest
+
+      - name: 🚀 Deploy on remote server via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /home/gns
+            ./log.sh
