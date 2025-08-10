@@ -15,7 +15,7 @@ const schema = new mongoose.Schema({
     password: String,
     role: {
         type: String,
-        enum: ["admin", "user", "agent"],
+        enum: ["admin", "user"],
         default: 'user'
     },
     logoutAt: Date,
