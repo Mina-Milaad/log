@@ -9,11 +9,7 @@ import { bootstrap } from './src/modules/bootstrap.js'
 
 const app = express();
 const port = 5000;
-app.use(cors({
-  origin:  '*' ,
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept'],
-  credentials: true,
-}))
+app.use(cors())
 app.use(express.json())
 
 
