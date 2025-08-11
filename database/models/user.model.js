@@ -1,4 +1,4 @@
-import bycrpt from 'bcrypt';
+import bcrybt from 'bcrypt';
 import mongoose from 'mongoose';
 
 const schema = new mongoose.Schema({
