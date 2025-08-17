@@ -51,15 +51,10 @@ jobs:
           tags: mybyelias/log:latest
 
 
-# 6. Set up Trivy - إضافة
-      - name: ⚙️ Set up Trivy
-        uses: aquasecurity/setup-trivy@v0.2.3
-        with:
-          version: v0.65.0   # أحدث نسخة
-      
+
    # 7. Scan Docker Image (Trivy) - تعديل
       - name: 🔍 Scan Docker image with Trivy
-        uses: aquasecurity/trivy-action@v0.32.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: "mybyelias/log:latest"
           format: "json"
