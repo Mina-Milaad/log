@@ -59,7 +59,7 @@ jobs:
       
    # 7. Scan Docker Image (Trivy) - تعديل
       - name: 🔍 Scan Docker image with Trivy
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.32.0
         with:
           image-ref: "mybyelias/log:latest"
           format: "json"
