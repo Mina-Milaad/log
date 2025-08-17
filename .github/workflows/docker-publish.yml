@@ -63,7 +63,7 @@ jobs:
           image-ref: "mybyelias/log:latest"
           format: "json"
           output: "trivy-report.json"
-          exit-code: "1"          # يفشل لو فيه CRITICAL فقط
+          exit-code: "1"          # يفشل لو فيه CRITICAL فق
           vuln-type: "os,library"
           severity: "CRITICAL" 
 
