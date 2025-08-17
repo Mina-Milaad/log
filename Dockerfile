@@ -18,6 +18,7 @@ RUN apt-get update && \
     libicu72 \
     libmagickcore-6.q16-6 \
     libmagickwand-6.q16-6 \
+    python3.11-minimal \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -28,11 +29,11 @@ COPY package.json package-lock.json ./
 # تثبيت الحزم بدون dev
 RUN npm ci --omit=dev
 
+# تحديث جميع مكتبات Node.js لمواجهة الثغرات
+RUN npm update
+
 # نسخ باقي ملفات المشروع
 COPY . .
-
-# تحديث أي مكتبات Node.js المعروفة بالثغرات (مثال cross-spawn)
-RUN npm update cross-spawn
 
 EXPOSE 3000
 CMD ["node", "index.js"]
