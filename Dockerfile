@@ -37,5 +37,5 @@ RUN npm update
 # نسخ باقي ملفات المشروع
 COPY . .
 
-EXPOSE 3000
+EXPOSE 5000
 CMD ["node", "index.js"]
