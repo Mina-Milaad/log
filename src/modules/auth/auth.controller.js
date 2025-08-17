@@ -8,7 +8,7 @@ import bcrypt from 'bcrypt';
 const signup = catchError(async (req, res) => {
     let user = new User(req.body);
     await user.save();
-    let token = jwt.sign({ userId: user._id, role: user.role }, "process.env.JWT_KEY")
+    let token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_KEY)
     res.json({ message: "success", token })
 }) 
 
@@ -16,7 +16,7 @@ const signup = catchError(async (req, res) => {
 const signin = catchError(async (req, res, next) => {
     let user = await User.findOne({ email: req.body.email })
     if (user && bcrypt.compareSync(req.body.password, user.password)) {
-        let token = jwt.sign({ userId: user._id, role: user.role }, "process.env.JWT_KEY")
+        let token = jwt.sign({ userId: user._id, role: user.role }, process.env.JWT_KEY)
         res.json({ message: "success", token })
     }
     next(new AppError('incorrect email or password', 401))
@@ -28,7 +28,7 @@ const protectedRoutes = catchError(async (req, res, next) => {
     let userPayload = null;
     if (!token) return next(new AppError("token not provided", 401))
 
-    jwt.verify(token, "process.env.JWT_KEY", (err, payload) => {
+    jwt.verify(token, process.env.JWT_KEY, (err, payload) => {
         if (err) return next(new AppError(err, 401))
         userPayload = payload
     })
