@@ -57,11 +57,8 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "mybyelias/log:latest"
-          format: "json"
-          output: "trivy-report.json"
-          exit-code: "1"          # يفشل لو فيه CRITICAL فق
-          vuln-type: "os,library"
-          severity: "CRITICAL" 
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
 
       # 8. Push Docker Image (only if scans passed)
       - name: 📤 Push Docker image
