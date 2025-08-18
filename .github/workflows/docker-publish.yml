@@ -52,7 +52,7 @@ jobs:
 
 
 
-   # 7. Scan Docker Image (Trivy) - تعديل
+   # 7. Scan Docker Image (Trivy) 
       - name: 🔍 Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -60,8 +60,32 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
 
+
+      - name: 📤 Send Trivy report to Jira
+        run: |
+          summary="Trivy scan report - $(date +'%Y-%m-%d')"
+          description=$(cat trivy-report.json | jq -r '.Results | tostring')
+          
+          curl -X POST \
+            -H "Authorization: Basic $JIRA_AUTH" \
+            -H "Content-Type: application/json" \
+            --data "{
+              \"fields\": {
+                \"project\": { \"key\": \"NJ\" },
+                \"summary\": \"$summary\",
+                \"description\": \"$description\",
+                \"issuetype\": { \"name\": \"Bug\" }
+          }
+        }" \
+       https://gnsus.atlassian.net
+    env:
+      JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+
+
+
+
       # 8. Push Docker Image (only if scans passed)
-      - name: 📤 Push Docker image
+    - name: 📤 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
         with:
@@ -79,3 +103,5 @@ jobs:
           script: |
             cd /home/gns
             ./log.sh
+
+
