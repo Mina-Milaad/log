@@ -26,6 +26,10 @@ RUN apt-get update && \
 
 WORKDIR /app
 
+RUN npm install -g npm@latest
+
+
+
 # نسخ ملفات npm
 COPY package.json package-lock.json ./
 
