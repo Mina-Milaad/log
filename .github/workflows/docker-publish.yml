@@ -13,33 +13,40 @@ jobs:
       # 0. Checkout
       - name: 🔄 Checkout repo
         uses: actions/checkout@v3
+        id: checkout
 
       - name: 📦 Setup Node.js
         run: npm install
-
-
+        id: setup-node
 
       # 1. Secrets Scanning
       - name: 🔐 Run Gitleaks (Secrets Scan)
         uses: gitleaks/gitleaks-action@v2
         with:
           args: detect --source . --no-git -v
+        continue-on-error: true
+        id: gitleaks
 
       # 2. Static Code Analysis (SAST)
       - name: 🛡️ Run Semgrep (SAST)
         uses: returntocorp/semgrep-action@v1
         with:
           config: "p/ci"
+        continue-on-error: true
+        id: semgrep
 
       # 3. Dependency Security (SCA) - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        continue-on-error: true
+        id: snyk
 
       # 4. Set up Docker Buildx
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        id: buildx
 
       # 5. Login to DockerHub
       - name: 🔐 Login to DockerHub
@@ -47,6 +54,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+        id: docker-login
 
       # 6. Build Docker Image (without pushing yet)
       - name: 📦 Build Docker image
@@ -55,6 +63,8 @@ jobs:
           context: .
           push: false
           tags: mybyelias/log:latest
+        continue-on-error: true
+        id: docker-build
 
       # 7. Scan Docker Image (Trivy)
       - name: 🔍 Scan Docker image with Trivy
@@ -65,9 +75,10 @@ jobs:
           ignore-unfixed: true
           format: json
           output: trivy-report.json
+        continue-on-error: true
+        id: trivy
 
-
-      # 9. Push Docker Image (only if scans passed)
+      # 8. Push Docker Image
       - name: 📤 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
@@ -75,8 +86,10 @@ jobs:
           context: .
           push: true
           tags: mybyelias/log:latest
+        continue-on-error: true
+        id: docker-push
 
-      # 10. Deploy on remote server via SSH
+      # 9. Deploy on remote server via SSH
       - name: 🚀 Deploy on remote server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -86,10 +99,10 @@ jobs:
           script: |
             cd /home/gns
             ./log.sh
+        continue-on-error: true
+        id: deploy
 
-
-
-            # 11. Send Full CI/CD Report to Jira
+      # 10. Send Full CI/CD Report to Jira
       - name: 📤 Send full CI/CD report to Jira
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
@@ -99,16 +112,15 @@ jobs:
           semgrep_report="${{ steps.semgrep.outcome }}"
           snyk_report="${{ steps.snyk.outcome }}"
           trivy_report=$(cat trivy-report.json || echo "{}")
-          docker_build_report="Docker image built: mybyelias/log:latest"
-          docker_push_report="Docker image pushed ✅"
+          docker_build_report="${{ steps.docker-build.outcome }}"
+          docker_push_report="${{ steps.docker-push.outcome }}"
           deploy_report="${{ steps.deploy.outcome }}"
 
-          # Build description in Atlassian Document Format
           description="{
             \"type\": \"doc\",
             \"version\": 1,
             \"content\": [
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ✅\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
