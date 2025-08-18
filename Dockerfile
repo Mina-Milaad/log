@@ -1,9 +1,11 @@
-
 FROM node:18
 
 WORKDIR /app
 
-# تحديث npm نفسه عشان يجيب cross-spawn fixed version
+# تحديث باكدجات Debian
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+# تحديث npm نفسه عشان يحل مشكلة cross-spawn القديمة
 RUN npm install -g npm@latest
 
 COPY package.json package-lock.json ./
@@ -14,8 +16,6 @@ COPY . .
 
 EXPOSE 5000
 CMD ["node", "index.js"]
-
-
 
 
 
