@@ -65,7 +65,7 @@ jobs:
 
 
       # 8. Push Docker Image (only if scans passed)
-    - name: 📤 Push Docker image
+      - name: 📤 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
         with:
