@@ -96,33 +96,51 @@ jobs:
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
+          # Gather outputs safely
           gitleaks_report="${{ steps.gitleaks.outcome }}"
-          semgrep_report=$(cat semgrep-report.log 2>/dev/null || echo "${{ steps.semgrep.outcome }}")
+          semgrep_report="${{ steps.semgrep.outcome }}"
           snyk_report="${{ steps.snyk.outcome }}"
-          trivy_report=$(cat trivy-report.json || echo "{}")
-          docker_build_report=$(cat docker-build.log || echo "${{ steps.docker-build.outcome }}")
-          docker_push_report=$(cat docker-push.log || echo "${{ steps.docker-push.outcome }}")
-          deploy_report=$(cat deploy.log || echo "${{ steps.deploy.outcome }}")
 
-          description="{
-            \"type\": \"doc\",
-            \"version\": 1,
-            \"content\": [
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build:\"}]},
-              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"text\"},\"content\":[{\"type\":\"text\",\"text\":$docker_build_report}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
-              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push:\"}]},
-              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"text\"},\"content\":[{\"type\":\"text\",\"text\":$docker_push_report}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment:\"}]},
-              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"text\"},\"content\":[{\"type\":\"text\",\"text\":$deploy_report}]}
+          # Safely read files, fallback if missing
+          trivy_report=$( [ -f trivy-report.json ] && cat trivy-report.json || echo "{}" )
+          docker_build_report=$( [ -f docker-build.log ] && cat docker-build.log || echo "No build log available" )
+          deploy_report=$( [ -f deploy.log ] && cat deploy.log || echo "No deploy log available" )
+
+          # Convert to JSON-safe strings
+          gitleaks_report_json=$(jq -Rs . <<< "$gitleaks_report")
+          semgrep_report_json=$(jq -Rs . <<< "$semgrep_report")
+          snyk_report_json=$(jq -Rs . <<< "$snyk_report")
+          docker_build_report_json=$(jq -Rs . <<< "$docker_build_report")
+          trivy_report_json=$(jq -Rs . <<< "$trivy_report")
+          deploy_report_json=$(jq -Rs . <<< "$deploy_report")
+
+          # Prepare Jira description
+          description=$(jq -n --arg g "$gitleaks_report_json" \
+                               --arg s "$semgrep_report_json" \
+                               --arg sn "$snyk_report_json" \
+                               --arg db "$docker_build_report_json" \
+                               --arg tr "$trivy_report_json" \
+                               --arg dp "$deploy_report_json" \
+                               '{
+            type: "doc",
+            version: 1,
+            content: [
+              {type:"paragraph", content:[{type:"text", text:"Gitleaks Scan: "}]},
+              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$g}]},
+              {type:"paragraph", content:[{type:"text", text:"Semgrep Scan: "}]},
+              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$s}]},
+              {type:"paragraph", content:[{type:"text", text:"Snyk Scan: "}]},
+              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$sn}]},
+              {type:"paragraph", content:[{type:"text", text:"Docker Build: "}]},
+              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$db}]},
+              {type:"paragraph", content:[{type:"text", text:"Trivy Report: "}]},
+              {type:"codeBlock", attrs:{language:"json"}, content:[{type:"text", text:$tr}]},
+              {type:"paragraph", content:[{type:"text", text:"Deployment: "}]},
+              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$dp}]}
             ]
-          }"
+          }')
 
+          # Send to Jira
           curl -X POST \
             -H "Authorization: Basic $JIRA_AUTH" \
             -H "Content-Type: application/json" \
