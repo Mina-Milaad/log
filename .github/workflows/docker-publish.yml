@@ -23,9 +23,18 @@ jobs:
       - name: 🔐 Run Gitleaks (Secrets Scan)
         uses: gitleaks/gitleaks-action@v2
         with:
-          args: detect --source . --no-git -v --report-format=json --report-path=gitleaks-report.json
+          args: detect --source . --no-git -v --report-format json --report-path gitleaks-report.json
         continue-on-error: true
         id: gitleaks
+
+      - name: 📝 Gitleaks Summary
+        id: gitleaks-summary
+        run: |
+          count=$(jq '.leaks | length' gitleaks-report.json)
+          summary=$(jq -r '[.leaks[]?.description] | join("; ")' gitleaks-report.json)
+          summary=${summary:-"No issues"}
+          echo "count=$count" >> $GITHUB_OUTPUT
+          echo "summary=$summary" >> $GITHUB_OUTPUT
 
       # 2. Static Code Analysis (SAST)
       - name: 🛡️ Run Semgrep (SAST)
@@ -33,9 +42,17 @@ jobs:
         with:
           config: "p/ci"
           output: semgrep-report.json
-          json: true
         continue-on-error: true
         id: semgrep
+
+      - name: 📝 Semgrep Summary
+        id: semgrep-summary
+        run: |
+          count=$(jq '.results | length' semgrep-report.json)
+          summary=$(jq -r '[.results[]?.message] | join("; ")' semgrep-report.json)
+          summary=${summary:-"No issues"}
+          echo "count=$count" >> $GITHUB_OUTPUT
+          echo "summary=$summary" >> $GITHUB_OUTPUT
 
       # 3. Dependency Security (SCA) - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
@@ -80,6 +97,14 @@ jobs:
         continue-on-error: true
         id: trivy
 
+      - name: 📝 Trivy Summary
+        id: trivy-summary
+        run: |
+          high_count=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
+          critical_count=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
+          echo "high=$high_count" >> $GITHUB_OUTPUT
+          echo "critical=$critical_count" >> $GITHUB_OUTPUT
+
       # 8. Push Docker Image
       - name: 📤 Push Docker image
         if: success()
@@ -104,40 +129,21 @@ jobs:
         continue-on-error: true
         id: deploy
 
-      # 10. Prepare Short Reports
-      - name: 📝 Prepare short reports
-        id: short-reports
+      # 10. Send Full CI/CD Report to Jira
+      - name: 📤 Send full CI/CD report to Jira
         run: |
-          # Gitleaks summary
-          gitleaks_count=$(jq '.leaks | length' gitleaks-report.json || echo 0)
-          gitleaks_top=$(jq -r '[.leaks[]?.description] | .[:3] | join("; ")' gitleaks-report.json || echo "No issues")
-          echo "gitleaks_count=$gitleaks_count" >> $GITHUB_OUTPUT
-          echo "gitleaks_top=$gitleaks_top" >> $GITHUB_OUTPUT
+          summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
-          # Semgrep summary
-          semgrep_count=$(jq '.results | length' semgrep-report.json || echo 0)
-          semgrep_top=$(jq -r '[.results[]?.message] | .[:3] | join("; ")' semgrep-report.json || echo "No issues")
-          echo "semgrep_count=$semgrep_count" >> $GITHUB_OUTPUT
-          echo "semgrep_top=$semgrep_top" >> $GITHUB_OUTPUT
-
-          # Trivy summary
-          trivy_high=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json || echo 0)
-          trivy_critical=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json || echo 0)
-          echo "trivy_high=$trivy_high" >> $GITHUB_OUTPUT
-          echo "trivy_critical=$trivy_critical" >> $GITHUB_OUTPUT
-
-      # 11. Send Short CI/CD Report to Jira
-      - name: 📤 Send short CI/CD report to Jira
-        run: |
-          summary="CI/CD Short Report - $(date +'%Y-%m-%d')"
           description="{
-            \"type\":\"doc\",
-            \"version\":1,
-            \"content\":[
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks: ${{ steps.short-reports.outputs.gitleaks_count }} issues (top: ${{ steps.short-reports.outputs.gitleaks_top }})\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep: ${{ steps.short-reports.outputs.semgrep_count }} issues (top: ${{ steps.short-reports.outputs.semgrep_top }})\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy: High=${{ steps.short-reports.outputs.trivy_high }}, Critical=${{ steps.short-reports.outputs.trivy_critical }}\"}]},
+            \"type\": \"doc\",
+            \"version\": 1,
+            \"content\": [
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: ${{ steps.gitleaks-summary.outputs.count }} issues: ${{ steps.gitleaks-summary.outputs.summary }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: ${{ steps.semgrep-summary.outputs.count }} issues: ${{ steps.semgrep-summary.outputs.summary }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: Check Snyk dashboard for details\"}]} ,
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: ${{ steps.docker-build.outcome }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Scan Summary: High: ${{ steps.trivy-summary.outputs.high }}, Critical: ${{ steps.trivy-summary.outputs.critical }}\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: ${{ steps.docker-push.outcome }}\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: ${{ steps.deploy.outcome }}\"}]}
             ]
