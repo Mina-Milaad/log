@@ -60,29 +60,30 @@ jobs:
           format: json
           output: trivy-report.json
 
-      # 8. Send Trivy report to Jira
       - name: 📤 Send Trivy report to Jira
         run: |
           summary="Trivy scan report - $(date +'%Y-%m-%d')"
+          # نحول الـ report كله ل string escaped
           description=$(jq -Rs . < trivy-report.json)
 
           echo "---- DEBUG: description ----"
           echo "$description"
-          
-         curl -X POST \
+
+          curl -X POST \
             -H "Authorization: Basic $JIRA_AUTH" \
             -H "Content-Type: application/json" \
             --data "{
               \"fields\": {
                 \"project\": { \"key\": \"SEC\" },
                 \"summary\": \"$summary\",
-                \"description\": \"$description\",
+                \"description\": $description,
                 \"issuetype\": { \"name\": \"Bug\" }
               }
             }" \
             https://gnsus.atlassian.net/rest/api/3/issue
         env:
           JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+
 
       # 9. Push Docker Image (only if scans passed)
       - name: 📤 Push Docker image
