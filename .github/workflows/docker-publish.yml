@@ -27,15 +27,6 @@ jobs:
         continue-on-error: true
         id: gitleaks
 
-      - name: 📝 Gitleaks Summary
-        id: gitleaks-summary
-        run: |
-          count=$(jq '.leaks | length' gitleaks-report.json)
-          summary=$(jq -r '[.leaks[]?.description] | join("; ")' gitleaks-report.json)
-          summary=${summary:-"No issues"}
-          echo "count=$count" >> $GITHUB_OUTPUT
-          echo "summary=$summary" >> $GITHUB_OUTPUT
-
       # 2. Static Code Analysis (SAST)
       - name: 🛡️ Run Semgrep (SAST)
         uses: returntocorp/semgrep-action@v1
@@ -44,15 +35,6 @@ jobs:
           output: semgrep-report.json
         continue-on-error: true
         id: semgrep
-
-      - name: 📝 Semgrep Summary
-        id: semgrep-summary
-        run: |
-          count=$(jq '.results | length' semgrep-report.json)
-          summary=$(jq -r '[.results[]?.message] | join("; ")' semgrep-report.json)
-          summary=${summary:-"No issues"}
-          echo "count=$count" >> $GITHUB_OUTPUT
-          echo "summary=$summary" >> $GITHUB_OUTPUT
 
       # 3. Dependency Security (SCA) - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
@@ -97,7 +79,7 @@ jobs:
         continue-on-error: true
         id: trivy
 
-      - name: 📝 Trivy Summary
+      - name: 📝 Trivy Scan Summary
         id: trivy-summary
         run: |
           high_count=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
@@ -134,18 +116,28 @@ jobs:
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
+          # Gather outputs
+          gitleaks_report=$(jq -r '[.leaks[]?.description] | join(", ")' gitleaks-report.json || echo "No issues")
+          semgrep_report=$(jq -r '[.results[]?.message] | join(", ")' semgrep-report.json || echo "No issues")
+          snyk_report="Check Snyk UI for details" # Snyk CLI JSON parsing optional
+          trivy_high=${{ steps.trivy-summary.outputs.high }}
+          trivy_critical=${{ steps.trivy-summary.outputs.critical }}
+          docker_build_report="${{ steps.docker-build.outcome }}"
+          docker_push_report="${{ steps.docker-push.outcome }}"
+          deploy_report="${{ steps.deploy.outcome }}"
+
           description="{
             \"type\": \"doc\",
             \"version\": 1,
             \"content\": [
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: ${{ steps.gitleaks-summary.outputs.count }} issues: ${{ steps.gitleaks-summary.outputs.summary }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: ${{ steps.semgrep-summary.outputs.count }} issues: ${{ steps.semgrep-summary.outputs.summary }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: Check Snyk dashboard for details\"}]} ,
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: ${{ steps.docker-build.outcome }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Scan Summary: High: ${{ steps.trivy-summary.outputs.high }}, Critical: ${{ steps.trivy-summary.outputs.critical }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: ${{ steps.docker-push.outcome }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: ${{ steps.deploy.outcome }}\"}]}
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Scan Summary: High: $trivy_high, Critical: $trivy_critical\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
             ]
           }"
 
