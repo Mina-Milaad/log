@@ -1,4 +1,5 @@
-FROM node:18-bullseye
+
+FROM node:18
 
 # تحديث النظام والحزم
 RUN apt-get update && \
@@ -22,10 +23,9 @@ RUN apt-get update && \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
+
 WORKDIR /app
 
-# تحديث npm باستخدام corepack
-RUN corepack enable && corepack prepare npm@latest --activate
 
 # نسخ ملفات npm
 COPY package.json package-lock.json ./
@@ -33,9 +33,11 @@ COPY package.json package-lock.json ./
 # تثبيت الحزم بدون dev
 RUN npm ci --omit=dev
 
+# تحديث جميع مكتبات Node.js لمواجهة الثغرات
+RUN npm update
+
 # نسخ باقي ملفات المشروع
 COPY . .
 
 EXPOSE 5000
 CMD ["node", "index.js"]
-
