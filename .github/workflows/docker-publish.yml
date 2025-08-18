@@ -63,8 +63,19 @@ jobs:
       - name: 📤 Send Trivy report to Jira
         run: |
           summary="Trivy scan report - $(date +'%Y-%m-%d')"
-          # نحول الـ report كله ل string escaped
-          description=$(jq -Rs . < trivy-report.json)
+          
+          description="{
+            \"type\": \"doc\",
+            \"version\": 1,
+            \"content\": [
+              {
+                \"type\": \"paragraph\",
+                \"content\": [
+                  { \"type\": \"text\", \"text\": $raw }
+                ]
+              }
+            ]
+          }"
 
           echo "---- DEBUG: description ----"
           echo "$description"
