@@ -15,12 +15,11 @@ jobs:
         uses: actions/checkout@v3
         id: checkout
 
-      # 1. Setup Node.js dependencies
-      - name: 📦 Install Node.js dependencies
+      - name: 📦 Setup Node.js
         run: npm install
         id: setup-node
 
-      # 2. Secrets Scanning
+      # 1. Secrets Scanning
       - name: 🔐 Run Gitleaks (Secrets Scan)
         uses: gitleaks/gitleaks-action@v2
         with:
@@ -28,7 +27,7 @@ jobs:
         continue-on-error: true
         id: gitleaks
 
-      # 3. Static Code Analysis (SAST)
+      # 2. Static Code Analysis (SAST)
       - name: 🛡️ Run Semgrep (SAST)
         uses: returntocorp/semgrep-action@v1
         with:
@@ -36,7 +35,7 @@ jobs:
         continue-on-error: true
         id: semgrep
 
-      # 4. Dependency Security (SCA) - Snyk
+      # 3. Dependency Security (SCA) - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
         env:
@@ -44,12 +43,12 @@ jobs:
         continue-on-error: true
         id: snyk
 
-      # 5. Set up Docker Buildx
+      # 4. Set up Docker Buildx
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         id: buildx
 
-      # 6. Login to DockerHub
+      # 5. Login to DockerHub
       - name: 🔐 Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -57,28 +56,40 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
         id: docker-login
 
-      # 7. Build Docker Image
+      # 6. Build Docker Image (without pushing yet)
       - name: 📦 Build Docker image
-        run: |
-          docker build . -t mybyelias/log:latest > docker-build.log 2>&1 || true
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: mybyelias/log:latest
         continue-on-error: true
         id: docker-build
 
-      # 8. Scan Docker Image (Trivy)
+      # 7. Scan Docker Image (Trivy)
       - name: 🔍 Scan Docker image with Trivy
-        run: |
-          trivy image --severity HIGH,CRITICAL --ignore-unfixed -f json -o trivy-report.json mybyelias/log:latest || true
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "mybyelias/log:latest"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: json
+          output: trivy-report.json
         continue-on-error: true
         id: trivy
 
-      # 9. Push Docker Image
+      # 8. Push Docker Image
       - name: 📤 Push Docker image
-        run: |
-          docker push mybyelias/log:latest > docker-push.log 2>&1 || true
+        if: success()
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: mybyelias/log:latest
         continue-on-error: true
         id: docker-push
 
-      # 10. Deploy on remote server via SSH
+      # 9. Deploy on remote server via SSH
       - name: 🚀 Deploy on remote server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -87,60 +98,40 @@ jobs:
           password: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /home/gns
-            ./log.sh > deploy.log 2>&1 || true
+            ./log.sh
         continue-on-error: true
         id: deploy
 
-      # 11. Send Full CI/CD Report to Jira
+      # 10. Send Full CI/CD Report to Jira
       - name: 📤 Send full CI/CD report to Jira
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
-          # Gather outputs safely
+          # Gather outputs
           gitleaks_report="${{ steps.gitleaks.outcome }}"
           semgrep_report="${{ steps.semgrep.outcome }}"
           snyk_report="${{ steps.snyk.outcome }}"
+          trivy_report=$(cat trivy-report.json || echo "{}")
+          docker_build_report="${{ steps.docker-build.outcome }}"
+          docker_push_report="${{ steps.docker-push.outcome }}"
+          deploy_report="${{ steps.deploy.outcome }}"
 
-          # Safely read files, fallback if missing
-          trivy_report=$( [ -f trivy-report.json ] && cat trivy-report.json || echo "{}" )
-          docker_build_report=$( [ -f docker-build.log ] && cat docker-build.log || echo "No build log available" )
-          deploy_report=$( [ -f deploy.log ] && cat deploy.log || echo "No deploy log available" )
-
-          # Convert to JSON-safe strings
-          gitleaks_report_json=$(jq -Rs . <<< "$gitleaks_report")
-          semgrep_report_json=$(jq -Rs . <<< "$semgrep_report")
-          snyk_report_json=$(jq -Rs . <<< "$snyk_report")
-          docker_build_report_json=$(jq -Rs . <<< "$docker_build_report")
-          trivy_report_json=$(jq -Rs . <<< "$trivy_report")
-          deploy_report_json=$(jq -Rs . <<< "$deploy_report")
-
-          # Prepare Jira description
-          description=$(jq -n --arg g "$gitleaks_report_json" \
-                               --arg s "$semgrep_report_json" \
-                               --arg sn "$snyk_report_json" \
-                               --arg db "$docker_build_report_json" \
-                               --arg tr "$trivy_report_json" \
-                               --arg dp "$deploy_report_json" \
-                               '{
-            type: "doc",
-            version: 1,
-            content: [
-              {type:"paragraph", content:[{type:"text", text:"Gitleaks Scan: "}]},
-              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$g}]},
-              {type:"paragraph", content:[{type:"text", text:"Semgrep Scan: "}]},
-              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$s}]},
-              {type:"paragraph", content:[{type:"text", text:"Snyk Scan: "}]},
-              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$sn}]},
-              {type:"paragraph", content:[{type:"text", text:"Docker Build: "}]},
-              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$db}]},
-              {type:"paragraph", content:[{type:"text", text:"Trivy Report: "}]},
-              {type:"codeBlock", attrs:{language:"json"}, content:[{type:"text", text:$tr}]},
-              {type:"paragraph", content:[{type:"text", text:"Deployment: "}]},
-              {type:"codeBlock", attrs:{language:"text"}, content:[{type:"text", text:$dp}]}
+          description="{
+            \"type\": \"doc\",
+            \"version\": 1,
+            \"content\": [
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
             ]
-          }')
+          }"
 
-          # Send to Jira
           curl -X POST \
             -H "Authorization: Basic $JIRA_AUTH" \
             -H "Content-Type: application/json" \
