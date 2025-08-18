@@ -23,7 +23,7 @@ jobs:
       - name: 🔐 Run Gitleaks (Secrets Scan)
         uses: gitleaks/gitleaks-action@v2
         with:
-          args: detect --source . --no-git -v --report-format json --report-path gitleaks-report.json
+          args: detect --source . --no-git -v
         continue-on-error: true
         id: gitleaks
 
@@ -32,7 +32,6 @@ jobs:
         uses: returntocorp/semgrep-action@v1
         with:
           config: "p/ci"
-          output: semgrep-report.json
         continue-on-error: true
         id: semgrep
 
@@ -79,14 +78,6 @@ jobs:
         continue-on-error: true
         id: trivy
 
-      - name: 📝 Trivy Scan Summary
-        id: trivy-summary
-        run: |
-          high_count=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy-report.json)
-          critical_count=$(jq '[.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy-report.json)
-          echo "high=$high_count" >> $GITHUB_OUTPUT
-          echo "critical=$critical_count" >> $GITHUB_OUTPUT
-
       # 8. Push Docker Image
       - name: 📤 Push Docker image
         if: success()
@@ -117,11 +108,10 @@ jobs:
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
           # Gather outputs
-          gitleaks_report=$(jq -r '[.leaks[]?.description] | join(", ")' gitleaks-report.json || echo "No issues")
-          semgrep_report=$(jq -r '[.results[]?.message] | join(", ")' semgrep-report.json || echo "No issues")
-          snyk_report="Check Snyk UI for details" # Snyk CLI JSON parsing optional
-          trivy_high=${{ steps.trivy-summary.outputs.high }}
-          trivy_critical=${{ steps.trivy-summary.outputs.critical }}
+          gitleaks_report="${{ steps.gitleaks.outcome }}"
+          semgrep_report="${{ steps.semgrep.outcome }}"
+          snyk_report="${{ steps.snyk.outcome }}"
+          trivy_report=$(cat trivy-report.json || echo "{}")
           docker_build_report="${{ steps.docker-build.outcome }}"
           docker_push_report="${{ steps.docker-push.outcome }}"
           deploy_report="${{ steps.deploy.outcome }}"
@@ -135,7 +125,8 @@ jobs:
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Scan Summary: High: $trivy_high, Critical: $trivy_critical\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
             ]
