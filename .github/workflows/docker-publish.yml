@@ -61,26 +61,6 @@ jobs:
           ignore-unfixed: true
 
 
-      - name: 📤 Send Trivy report to Jira
-        run: |
-          summary="Trivy scan report - $(date +'%Y-%m-%d')"
-          description=$(cat trivy-report.json | jq -r '.Results | tostring')
-          
-          curl -X POST \
-            -H "Authorization: Basic $JIRA_AUTH" \
-            -H "Content-Type: application/json" \
-            --data "{
-              \"fields\": {
-                \"project\": { \"key\": \"NJ\" },
-                \"summary\": \"$summary\",
-                \"description\": \"$description\",
-                \"issuetype\": { \"name\": \"Bug\" }
-          }
-        }" \
-       https://gnsus.atlassian.net
-    env:
-      JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
-
 
 
 
