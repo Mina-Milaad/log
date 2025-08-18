@@ -66,74 +66,6 @@ jobs:
           format: json
           output: trivy-report.json
 
-      - name: 📤 Send Trivy report to Jira
-        run: |
-          summary="Trivy scan report - $(date +'%Y-%m-%d')"
-
-          raw_report=$(cat trivy-report.json)
-
-          # Extract vulnerability counts
-          high=$(jq '.Results[].Vulnerabilities[]? | select(.Severity=="HIGH")' trivy-report.json | jq -s 'length')
-          critical=$(jq '.Results[].Vulnerabilities[]? | select(.Severity=="CRITICAL")' trivy-report.json | jq -s 'length')
-
-          # Jira description in Atlassian Document Format
-          description="{
-            \"type\": \"doc\",
-            \"version\": 1,
-            \"content\": [
-              {
-                \"type\": \"paragraph\",
-                \"content\": [
-                  { \"type\": \"text\", \"text\": \"Trivy Scan Summary:\", \"marks\": [{\"type\": \"strong\"}] }
-                ]
-              },
-              {
-                \"type\": \"bulletList\",
-                \"content\": [
-                  {
-                    \"type\": \"listItem\",
-                    \"content\": [{\"type\": \"paragraph\", \"content\": [{\"type\": \"text\", \"text\": \"High: $high\"}]}]
-                  },
-                  {
-                    \"type\": \"listItem\",
-                    \"content\": [{\"type\": \"paragraph\", \"content\": [{\"type\": \"text\", \"text\": \"Critical: $critical\"}]}]
-                  }
-                ]
-              },
-              {
-                \"type\": \"paragraph\",
-                \"content\": [
-                  { \"type\": \"text\", \"text\": \"Full Report:\", \"marks\": [{\"type\": \"strong\"}] }
-                ]
-              },
-              {
-                \"type\": \"codeBlock\",
-                \"attrs\": { \"language\": \"json\" },
-                \"content\": [
-                  { \"type\": \"text\", \"text\": $(jq -Rs . <<< \"$raw_report\") }
-                ]
-              }
-            ]
-          }"
-
-          echo "---- DEBUG: description ----"
-          echo "$description"
-
-          curl -X POST \
-            -H "Authorization: Basic $JIRA_AUTH" \
-            -H "Content-Type: application/json" \
-            --data "{
-              \"fields\": {
-                \"project\": { \"key\": \"NJ\" },
-                \"summary\": \"$summary\",
-                \"description\": $description,
-                \"issuetype\": { \"name\": \"Task\" }
-              }
-            }" \
-            https://gnsus.atlassian.net/rest/api/3/issue
-        env:
-          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
-
 
       # 9. Push Docker Image (only if scans passed)
       - name: 📤 Push Docker image
@@ -154,3 +86,51 @@ jobs:
           script: |
             cd /home/gns
             ./log.sh
+
+
+
+            # 11. Send Full CI/CD Report to Jira
+      - name: 📤 Send full CI/CD report to Jira
+        run: |
+          summary="Full CI/CD report - $(date +'%Y-%m-%d')"
+
+          # Gather outputs
+          gitleaks_report="${{ steps.gitleaks.outcome }}"
+          semgrep_report="${{ steps.semgrep.outcome }}"
+          snyk_report="${{ steps.snyk.outcome }}"
+          trivy_report=$(cat trivy-report.json || echo "{}")
+          docker_build_report="Docker image built: mybyelias/log:latest"
+          docker_push_report="Docker image pushed ✅"
+          deploy_report="${{ steps.deploy.outcome }}"
+
+          # Build description in Atlassian Document Format
+          description="{
+            \"type\": \"doc\",
+            \"version\": 1,
+            \"content\": [
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ✅\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
+            ]
+          }"
+
+          curl -X POST \
+            -H "Authorization: Basic $JIRA_AUTH" \
+            -H "Content-Type: application/json" \
+            --data "{
+              \"fields\": {
+                \"project\": { \"key\": \"NJ\" },
+                \"summary\": \"$summary\",
+                \"description\": $description,
+                \"issuetype\": { \"name\": \"Task\" }
+              }
+            }" \
+            https://gnsus.atlassian.net/rest/api/3/issue
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
