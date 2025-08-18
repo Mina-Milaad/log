@@ -50,21 +50,38 @@ jobs:
           push: false
           tags: mybyelias/log:latest
 
-
-
-   # 7. Scan Docker Image (Trivy) 
+      # 7. Scan Docker Image (Trivy)
       - name: 🔍 Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "mybyelias/log:latest"
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          format: json
+          output: trivy-report.json
 
+      # 8. Send Trivy report to Jira
+      - name: 📤 Send Trivy report to Jira
+        run: |
+          summary="Trivy scan report - $(date +'%Y-%m-%d')"
+          description=$(cat trivy-report.json | jq -r '.Results | tostring')
+          
+          curl -X POST \
+            -H "Authorization: Basic $JIRA_AUTH" \
+            -H "Content-Type: application/json" \
+            --data "{
+              \"fields\": {
+                \"project\": { \"key\": \"SEC\" },
+                \"summary\": \"$summary\",
+                \"description\": \"$description\",
+                \"issuetype\": { \"name\": \"Bug\" }
+              }
+            }" \
+            https://gnsus.atlassian.net/rest/api/3/issue
+        env:
+          JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
 
-
-
-
-      # 8. Push Docker Image (only if scans passed)
+      # 9. Push Docker Image (only if scans passed)
       - name: 📤 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
@@ -73,7 +90,7 @@ jobs:
           push: true
           tags: mybyelias/log:latest
 
-      # 9. Deploy on remote server via SSH
+      # 10. Deploy on remote server via SSH
       - name: 🚀 Deploy on remote server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -83,5 +100,3 @@ jobs:
           script: |
             cd /home/gns
             ./log.sh
-
-
