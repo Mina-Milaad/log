@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 0. Checkout
       - name: 🔄 Checkout repo
         uses: actions/checkout@v3
 
@@ -60,11 +61,7 @@ jobs:
           format: json
           output: trivy-report.json
 
-
-
-
-
-
+      # 8. Send Trivy Report to Jira
       - name: 📤 Send Trivy report to Jira
         run: |
           summary="Trivy scan report - $(date +'%Y-%m-%d')"
@@ -72,24 +69,24 @@ jobs:
           raw_report=$(cat trivy-report.json)
 
           description="{
-             \"type\": \"doc\",
-             \"version\": 1,
-             \"content\": [
-               {
-                 \"type\": \"paragraph\",
-                 \"content\": [
-                   { \"type\": \"text\", \"text\": \"Trivy Scan Results:\", \"marks\": [{\"type\": \"strong\"}] }
-             ]
-          },
-          {
-             \"type\": \"codeBlock\",
-             \"attrs\": { \"language\": \"json\" },
-             \"content\": [
-                { \"type\": \"text\", \"text\": $(jq -Rs . <<< \"$raw_report\") }
+            \"type\": \"doc\",
+            \"version\": 1,
+            \"content\": [
+              {
+                \"type\": \"paragraph\",
+                \"content\": [
+                  { \"type\": \"text\", \"text\": \"Trivy Scan Results:\", \"marks\": [{\"type\": \"strong\"}] }
+                ]
+              },
+              {
+                \"type\": \"codeBlock\",
+                \"attrs\": { \"language\": \"json\" },
+                \"content\": [
+                  { \"type\": \"text\", \"text\": $(jq -Rs . <<< \"$raw_report\") }
+                ]
+              }
             ]
-         }
-       ]
-    }"
+          }"
 
           echo "---- DEBUG: description ----"
           echo "$description"
@@ -108,11 +105,6 @@ jobs:
             https://gnsus.atlassian.net/rest/api/3/issue
         env:
           JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
-
-
-
-
-
 
       # 9. Push Docker Image (only if scans passed)
       - name: 📤 Push Docker image
