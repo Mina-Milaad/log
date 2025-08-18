@@ -74,7 +74,7 @@ jobs:
             -H "Content-Type: application/json" \
             --data "{
               \"fields\": {
-                \"project\": { \"key\": \"SEC\" },
+                \"project\": { \"key\": \"NJ\" },
                 \"summary\": \"$summary\",
                 \"description\": $description,
                 \"issuetype\": { \"name\": \"Bug\" }
