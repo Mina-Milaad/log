@@ -15,40 +15,43 @@ jobs:
         uses: actions/checkout@v3
         id: checkout
 
+      # 1. Setup Node.js
       - name: 📦 Setup Node.js
         run: npm install
         id: setup-node
 
-      # 1. Secrets Scanning
+      # 2. Secrets Scanning - Gitleaks
       - name: 🔐 Run Gitleaks (Secrets Scan)
         uses: gitleaks/gitleaks-action@v2
         with:
-          args: detect --source . --no-git -v
+          args: detect --source . --no-git --report-format json --report-path gitleaks-report.json
         continue-on-error: true
         id: gitleaks
 
-      # 2. Static Code Analysis (SAST)
+      # 3. Static Code Analysis - Semgrep
       - name: 🛡️ Run Semgrep (SAST)
         uses: returntocorp/semgrep-action@v1
         with:
           config: "p/ci"
+          args: --json --output semgrep-report.json
         continue-on-error: true
         id: semgrep
 
-      # 3. Dependency Security (SCA) - Snyk
+      # 4. Dependency Security - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
         uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
         id: snyk
+        run: snyk test --all-projects --json-file-output=snyk-report.json || true
 
-      # 4. Set up Docker Buildx
+      # 5. Setup Docker Buildx
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         id: buildx
 
-      # 5. Login to DockerHub
+      # 6. Login to DockerHub
       - name: 🔐 Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -56,17 +59,19 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
         id: docker-login
 
-      # 6. Build Docker Image (without pushing yet)
+      # 7. Build Docker Image
       - name: 📦 Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: false
           tags: mybyelias/log:latest
+          load: true
         continue-on-error: true
         id: docker-build
+        run: docker build . -t mybyelias/log:latest > docker-build.log 2>&1 || true
 
-      # 7. Scan Docker Image (Trivy)
+      # 8. Scan Docker Image - Trivy
       - name: 🔍 Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -78,7 +83,7 @@ jobs:
         continue-on-error: true
         id: trivy
 
-      # 8. Push Docker Image
+      # 9. Push Docker Image
       - name: 📤 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
@@ -89,7 +94,7 @@ jobs:
         continue-on-error: true
         id: docker-push
 
-      # 9. Deploy on remote server via SSH
+      # 10. Deploy on remote server via SSH
       - name: 🚀 Deploy on remote server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -98,37 +103,41 @@ jobs:
           password: ${{ secrets.SERVER_SSH_KEY }}
           script: |
             cd /home/gns
-            ./log.sh
+            ./log.sh > deploy.log 2>&1 || true
         continue-on-error: true
         id: deploy
 
-      # 10. Send Full CI/CD Report to Jira
+      # 11. Send full CI/CD Report to Jira
       - name: 📤 Send full CI/CD report to Jira
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
           # Gather outputs
-          gitleaks_report="${{ steps.gitleaks.outcome }}"
-          semgrep_report="${{ steps.semgrep.outcome }}"
-          snyk_report="${{ steps.snyk.outcome }}"
+          gitleaks_report=$(cat gitleaks-report.json || echo "{}")
+          semgrep_report=$(cat semgrep-report.json || echo "{}")
+          snyk_report=$(cat snyk-report.json || echo "{}")
           trivy_report=$(cat trivy-report.json || echo "{}")
-          docker_build_report="${{ steps.docker-build.outcome }}"
-          docker_push_report="${{ steps.docker-push.outcome }}"
-          deploy_report="${{ steps.deploy.outcome }}"
+          docker_build_report=$(cat docker-build.log || echo "No logs")
+          deploy_report=$(cat deploy.log || echo "No logs")
 
           description="{
             \"type\": \"doc\",
             \"version\": 1,
             \"content\": [
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: ${{ steps.gitleaks.outcome }}\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$gitleaks_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: ${{ steps.semgrep.outcome }}\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$semgrep_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: ${{ steps.snyk.outcome }}\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$snyk_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: ${{ steps.docker-build.outcome }}\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"text\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$docker_build_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report: ${{ steps.trivy.outcome }}\"}]},
               {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: ${{ steps.docker-push.outcome }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: ${{ steps.deploy.outcome }}\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"text\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$deploy_report\")}]}
             ]
           }"
 
