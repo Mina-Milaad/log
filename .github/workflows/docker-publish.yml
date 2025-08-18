@@ -65,7 +65,7 @@ jobs:
           summary="Trivy scan report - $(date +'%Y-%m-%d')"
 
           raw_report=$(cat trivy-report.json | jq -Rs .)
-          
+
           description="{
             \"type\": \"doc\",
             \"version\": 1,
@@ -73,7 +73,7 @@ jobs:
               {
                 \"type\": \"paragraph\",
                 \"content\": [
-                  { \"type\": \"text\", \"text\": $raw }
+                  { \"type\": \"text\", \"text\": $raw_report }
                 ]
               }
             ]
