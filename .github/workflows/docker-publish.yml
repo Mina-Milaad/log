@@ -65,8 +65,11 @@ jobs:
         run: |
           summary="Trivy scan report - $(date +'%Y-%m-%d')"
           description=$(jq -Rs . < trivy-report.json)
+
+          echo "---- DEBUG: description ----"
+          echo "$description"
           
-          curl -X POST \
+         curl -X POST \
             -H "Authorization: Basic $JIRA_AUTH" \
             -H "Content-Type: application/json" \
             --data "{
