@@ -60,24 +60,36 @@ jobs:
           format: json
           output: trivy-report.json
 
+
+
+
+
+
       - name: 📤 Send Trivy report to Jira
         run: |
           summary="Trivy scan report - $(date +'%Y-%m-%d')"
 
-          raw_report=$(cat trivy-report.json | jq -Rs .)
+          raw_report=$(cat trivy-report.json)
 
           description="{
-            \"type\": \"doc\",
-            \"version\": 1,
-            \"content\": [
-              {
-                \"type\": \"paragraph\",
-                \"content\": [
-                  { \"type\": \"text\", \"text\": $raw_report }
-                ]
-              }
+             \"type\": \"doc\",
+             \"version\": 1,
+             \"content\": [
+               {
+                 \"type\": \"paragraph\",
+                 \"content\": [
+                   { \"type\": \"text\", \"text\": \"Trivy Scan Results:\", \"marks\": [{\"type\": \"strong\"}] }
+             ]
+          },
+          {
+             \"type\": \"codeBlock\",
+             \"attrs\": { \"language\": \"json\" },
+             \"content\": [
+                { \"type\": \"text\", \"text\": $(jq -Rs . <<< \"$raw_report\") }
             ]
-          }"
+         }
+       ]
+    }"
 
           echo "---- DEBUG: description ----"
           echo "$description"
@@ -96,6 +108,10 @@ jobs:
             https://gnsus.atlassian.net/rest/api/3/issue
         env:
           JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
+
+
+
+
 
 
       # 9. Push Docker Image (only if scans passed)
