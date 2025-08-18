@@ -77,7 +77,7 @@ jobs:
                 \"project\": { \"key\": \"NJ\" },
                 \"summary\": \"$summary\",
                 \"description\": $description,
-                \"issuetype\": { \"name\": \"Bug\" }
+                \"issuetype\": { \"name\": \"Task\" }
               }
             }" \
             https://gnsus.atlassian.net/rest/api/3/issue
