@@ -11,31 +11,31 @@ jobs:
 
     steps: 
       # 0. Checkout
-      - name: Checkout repo
+      - name: 🔄 Checkout repo
         uses: actions/checkout@v3
         id: checkout
 
       # 1. Setup Node.js
-      - name: Setup Node.js
+      - name: 📦 Setup Node.js
         run: npm install
         id: setup-node
 
       # 2. Secrets Scanning
-      - name: Run Gitleaks (Secrets Scan)
+      - name: 🔍 Run Gitleaks (Secrets Scan)
         run: |
           gitleaks detect --source . --no-git -v --report-format json --report-path gitleaks-report.json || true
         id: gitleaks
         continue-on-error: true
 
       # 3. Static Code Analysis (SAST)
-      - name: Run Semgrep (SAST)
+      - name: 🛡️ Run Semgrep (SAST)
         run: |
           semgrep --config p/ci --json --output=semgrep-report.json || true
         id: semgrep
         continue-on-error: true
 
       # 4. Dependency Security (SCA) - Snyk
-      - name: Run Snyk to check for vulnerabilities
+      - name: 📦🔒 Run Snyk to check for vulnerabilities
         run: |
           snyk test --json > snyk-report.json || true
         env:
@@ -44,12 +44,12 @@ jobs:
         continue-on-error: true
 
       # 5. Set up Docker Buildx
-      - name: Set up Docker Buildx
+      - name: 🛠️ Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         id: buildx
 
       # 6. Login to DockerHub
-      - name: Login to DockerHub
+      - name: 🔑 Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -57,7 +57,7 @@ jobs:
         id: docker-login
 
       # 7. Build Docker Image (without pushing yet)
-      - name: Build Docker image
+      - name: 🐳 Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -67,7 +67,7 @@ jobs:
         id: docker-build
 
       # 8. Scan Docker Image (Trivy)
-      - name: Scan Docker image with Trivy
+      - name: 🔎 Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "mybyelias/log:latest"
@@ -79,7 +79,7 @@ jobs:
         id: trivy
 
       # 9. Push Docker Image
-      - name: Push Docker image
+      - name: 🚀 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
         with:
@@ -90,7 +90,7 @@ jobs:
         id: docker-push
 
       # 10. Deploy on remote server via SSH
-      - name: Deploy on remote server via SSH
+      - name: 📡 Deploy on remote server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SERVER_IP }}
@@ -103,7 +103,7 @@ jobs:
         id: deploy
 
       # 11. Send Full CI/CD Report to Jira
-      - name: Send full CI/CD report to Jira
+      - name: 📤 Send full CI/CD report to Jira
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
