@@ -146,4 +146,3 @@ jobs:
             https://gnsus.atlassian.net/rest/api/3/issue
         env:
           JIRA_AUTH: ${{ secrets.JIRA_AUTH }}
-
