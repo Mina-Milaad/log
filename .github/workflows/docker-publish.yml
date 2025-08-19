@@ -32,7 +32,6 @@ jobs:
         uses: returntocorp/semgrep-action@v1
         with:
           config: "p/ci"
-        continue-on-error: true
         id: semgrep
 
       # 3. Dependency Security (SCA) - Snyk
@@ -109,7 +108,7 @@ jobs:
 
           # Gather outputs
           gitleaks_report="${{ steps.gitleaks.outcome }}"
-          semgrep_report="${{ steps.semgrep.outcome }}"
+          semgrep_report="${{ steps.semgrep.conclusion }}"
           snyk_report="${{ steps.snyk.outcome }}"
           trivy_report=$(cat trivy-report.json || echo "{}")
           docker_build_report="${{ steps.docker-build.outcome }}"
