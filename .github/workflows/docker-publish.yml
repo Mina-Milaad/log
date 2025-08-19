@@ -15,43 +15,40 @@ jobs:
         uses: actions/checkout@v3
         id: checkout
 
-      # 1. Setup Node.js dependencies
       - name: 📦 Setup Node.js
         run: npm install
         id: setup-node
 
-      # 2. Secrets Scanning (Gitleaks)
+      # 1. Secrets Scanning
       - name: 🔐 Run Gitleaks (Secrets Scan)
         uses: gitleaks/gitleaks-action@v2
         with:
-          args: detect --source . --no-git -v --report-format=json --report-path=gitleaks-report.json
+          args: detect --source . --no-git -v
         continue-on-error: true
         id: gitleaks
 
-      # 3. Static Code Analysis (SAST) - Semgrep
+      # 2. Static Code Analysis (SAST)
       - name: 🛡️ Run Semgrep (SAST)
         uses: returntocorp/semgrep-action@v1
         with:
           config: "p/ci"
-          path: "."
-          args: "--json --output semgrep-report.json"
         continue-on-error: true
         id: semgrep
 
-      # 4. Dependency Security (SCA) - Snyk
+      # 3. Dependency Security (SCA) - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
-        run: snyk test --json > snyk-report.json || true
+        uses: snyk/actions/node@master
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         continue-on-error: true
         id: snyk
 
-      # 5. Set up Docker Buildx
+      # 4. Set up Docker Buildx
       - name: 🐳 Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         id: buildx
 
-      # 6. Login to DockerHub
+      # 5. Login to DockerHub
       - name: 🔐 Login to DockerHub
         uses: docker/login-action@v3
         with:
@@ -59,7 +56,7 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
         id: docker-login
 
-      # 7. Build Docker Image (without pushing)
+      # 6. Build Docker Image (without pushing yet)
       - name: 📦 Build Docker image
         uses: docker/build-push-action@v5
         with:
@@ -69,7 +66,7 @@ jobs:
         continue-on-error: true
         id: docker-build
 
-      # 8. Scan Docker Image (Trivy)
+      # 7. Scan Docker Image (Trivy)
       - name: 🔍 Scan Docker image with Trivy
         uses: aquasecurity/trivy-action@master
         with:
@@ -81,7 +78,7 @@ jobs:
         continue-on-error: true
         id: trivy
 
-      # 9. Push Docker Image
+      # 8. Push Docker Image
       - name: 📤 Push Docker image
         if: success()
         uses: docker/build-push-action@v5
@@ -92,7 +89,7 @@ jobs:
         continue-on-error: true
         id: docker-push
 
-      # 10. Deploy on remote server via SSH
+      # 9. Deploy on remote server via SSH
       - name: 🚀 Deploy on remote server via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -105,48 +102,35 @@ jobs:
         continue-on-error: true
         id: deploy
 
-      # 11. Send Full CI/CD Report to Jira
+      # 10. Send Full CI/CD Report to Jira
       - name: 📤 Send full CI/CD report to Jira
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
-          # Read JSON reports safely
-          gitleaks_report=$(cat gitleaks-report.json 2>/dev/null || echo "{}")
-          semgrep_report=$(cat semgrep-report.json 2>/dev/null || echo "{}")
-          snyk_report=$(cat snyk-report.json 2>/dev/null || echo "{}")
-          trivy_report=$(cat trivy-report.json 2>/dev/null || echo "{}")
-
+          # Gather outputs
+          gitleaks_report="${{ steps.gitleaks.outcome }}"
+          semgrep_report="${{ steps.semgrep.outcome }}"
+          snyk_report="${{ steps.snyk.outcome }}"
+          trivy_report=$(cat trivy-report.json || echo "{}")
           docker_build_report="${{ steps.docker-build.outcome }}"
           docker_push_report="${{ steps.docker-push.outcome }}"
           deploy_report="${{ steps.deploy.outcome }}"
 
-          # Create Jira description with escaped JSON
-          description=$(jq -n --arg checkout "${{ steps.checkout.outcome }}" \
-                            --arg gitleaks "$gitleaks_report" \
-                            --arg semgrep "$semgrep_report" \
-                            --arg snyk "$snyk_report" \
-                            --arg trivy "$trivy_report" \
-                            --arg docker_build "$docker_build_report" \
-                            --arg docker_push "$docker_push_report" \
-                            --arg deploy "$deploy_report" \
-                            '{
-                              type:"doc",
-                              version:1,
-                              content:[
-                                {type:"paragraph",content:[{type:"text",text:"Checkout: \($checkout)"}]},
-                                {type:"paragraph",content:[{type:"text",text:"Gitleaks Report:"}]},
-                                {type:"codeBlock",attrs:{language:"json"},content:[{type:"text",text:$gitleaks}]},
-                                {type:"paragraph",content:[{type:"text",text:"Semgrep Report:"}]},
-                                {type:"codeBlock",attrs:{language:"json"},content:[{type:"text",text:$semgrep}]},
-                                {type:"paragraph",content:[{type:"text",text:"Snyk Report:"}]},
-                                {type:"codeBlock",attrs:{language:"json"},content:[{type:"text",text:$snyk}]},
-                                {type:"paragraph",content:[{type:"text",text:"Trivy Report:"}]},
-                                {type:"codeBlock",attrs:{language:"json"},content:[{type:"text",text:$trivy}]},
-                                {type:"paragraph",content:[{type:"text",text:"Docker Build: \($docker_build)"}]},
-                                {type:"paragraph",content:[{type:"text",text:"Docker Push: \($docker_push)"}]},
-                                {type:"paragraph",content:[{type:"text",text:"Deployment: \($deploy)"}]}
-                              ]
-                            }')
+          description="{
+            \"type\": \"doc\",
+            \"version\": 1,
+            \"content\": [
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Checkout: ${{ steps.checkout.outcome }}\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Gitleaks Scan: $gitleaks_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Semgrep Scan: $semgrep_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Snyk Scan: $snyk_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
+              {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
+            ]
+          }"
 
           curl -X POST \
             -H "Authorization: Basic $JIRA_AUTH" \
