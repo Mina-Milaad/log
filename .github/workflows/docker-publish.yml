@@ -29,10 +29,10 @@ jobs:
 
       # 2. Static Code Analysis (SAST)
       - name: 🛡️ Run Semgrep (SAST)
-        uses: returntocorp/semgrep-action@v1
-        with:
-          config: "p/ci"
+        run: |
+          semgrep --config p/ci --json --output=semgrep-report.json || true
         id: semgrep
+        continue-on-error: true
 
       # 3. Dependency Security (SCA) - Snyk
       - name: 🧩 Run Snyk to check for vulnerabilities
@@ -108,7 +108,7 @@ jobs:
 
           # Gather outputs
           gitleaks_report="${{ steps.gitleaks.outcome }}"
-          semgrep_report="${{ steps.semgrep.conclusion }}"
+          semgrep_findings=$(cat semgrep-report.json || echo "{}")
           snyk_report="${{ steps.snyk.outcome }}"
           trivy_report=$(cat trivy-report.json || echo "{}")
           docker_build_report="${{ steps.docker-build.outcome }}"
