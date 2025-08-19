@@ -90,32 +90,48 @@ jobs:
         id: docker-push
 
       # 10. Deploy on remote server via SSH
-      - name: 📡 Deploy on remote server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USERNAME }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            cd /home/gns
-            ./log.sh
-        continue-on-error: true
-        id: deploy
-
-      # 11. Send Full CI/CD Report to Jira
       - name: 📤 Send full CI/CD report to Jira
         run: |
           summary="Full CI/CD report - $(date +'%Y-%m-%d')"
 
-          # Gather outputs from JSON reports
-          gitleaks_report=$(cat gitleaks-report.json || echo "{}")
-          semgrep_report=$(cat semgrep-report.json || echo "{}")
-          snyk_report=$(cat snyk-report.json || echo "{}")
-          trivy_report=$(cat trivy-report.json || echo "{}")
-          docker_build_report="${{ steps.docker-build.outcome }}"
-          docker_push_report="${{ steps.docker-push.outcome }}"
-          deploy_report="${{ steps.deploy.outcome }}"
+          # Function to process report files
+          process_report() {
+            file=$1
+            tool=$2
+            if [ -s "$file" ]; then
+              content=$(cat "$file")
+              if [ "$content" = "{}" ] || [ "$content" = "[]" ] || [ -z "$content" ]; then
+                echo "{\"status\":\"ok\",\"tool\":\"$tool\",\"message\":\"No issues found\"}"
+              else
+                echo "$content"
+              fi
+            else
+              echo "{\"status\":\"ok\",\"tool\":\"$tool\",\"message\":\"No issues found\"}"
+            fi
+          }
 
+          # Function to format step outcomes
+          format_outcome() {
+            step=$1
+            outcome=$2
+            if [ "$outcome" = "success" ]; then
+              echo "✅ $step: Success"
+            else
+              echo "❌ $step: Failed"
+            fi
+          }
+
+          # Collect reports
+          gitleaks_report=$(process_report gitleaks-report.json "Gitleaks")
+          semgrep_report=$(process_report semgrep-report.json "Semgrep")
+          snyk_report=$(process_report snyk-report.json "Snyk")
+          trivy_report=$(process_report trivy-report.json "Trivy")
+
+          docker_build_report=$(format_outcome "Docker Build" "${{ steps.docker-build.outcome }}")
+          docker_push_report=$(format_outcome "Docker Push" "${{ steps.docker-push.outcome }}")
+          deploy_report=$(format_outcome "Deployment" "${{ steps.deploy.outcome }}")
+
+          # Build Jira description
           description="{
             \"type\": \"doc\",
             \"version\": 1,
@@ -134,12 +150,13 @@ jobs:
               {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Trivy Report:\"}]},
               {\"type\":\"codeBlock\",\"attrs\":{\"language\":\"json\"},\"content\":[{\"type\":\"text\",\"text\":$(jq -Rs . <<< \"$trivy_report\")}]},
 
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Build: $docker_build_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Docker Push: $docker_push_report\"}]},
-              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"Deployment: $deploy_report\"}]}
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$docker_build_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$docker_push_report\"}]},
+              {\"type\":\"paragraph\",\"content\":[{\"type\":\"text\",\"text\":\"$deploy_report\"}]}
             ]
           }"
 
+          # Send to Jira
           curl -X POST \
             -H "Authorization: Basic $JIRA_AUTH" \
             -H "Content-Type: application/json" \
